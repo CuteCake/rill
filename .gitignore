@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.vite/
+*.local
+.DS_Store
+
+# Large local-only MLIR dumps (kept for local testing, not distributed)
+yolov8n_readable/
+test/fixtures/flat-traced.mlir

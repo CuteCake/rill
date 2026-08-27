@@ -1,0 +1,252 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rill.dev/schema/profile.schema.json",
+  "title": "Rill profile",
+  "description": "A declarative profile: dialect visuals + op semantics (docs/PROFILE_SPEC.md) and, optionally, an input-format import mapping (docs/IMPORT_SPEC.md). This schema is the canonical definition of profile legality; the in-app validator adds friendlier did-you-mean messages.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional reference to this schema for editor tooling; ignored by the app."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Profile identifier, shown in the profile debug UI."
+    },
+    "version": {
+      "type": "number",
+      "description": "Profile format version. Currently 1."
+    },
+    "description": {
+      "type": "string",
+      "description": "Free-form description of what this profile covers."
+    },
+    "dialects": {
+      "type": "object",
+      "description": "Dialect name → accent color, either a hex string or { color }.",
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/$defs/hexColor" },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["color"],
+            "properties": { "color": { "$ref": "#/$defs/hexColor" } }
+          }
+        ]
+      }
+    },
+    "classify": {
+      "type": "array",
+      "description": "First-match-wins rules assigning ops a rendering class. Unmatched ops default to \"compute\".",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["as"],
+        "properties": {
+          "match": { "$ref": "#/$defs/matcher" },
+          "as": {
+            "enum": ["compute", "aux", "structural", "container"],
+            "description": "compute: full node. aux: small dashed node, hideable. structural: never drawn, edges chased through. container: currently like compute."
+          }
+        }
+      }
+    },
+    "regions": {
+      "type": "array",
+      "description": "How region-opening ops are parsed (MLIR front-end only).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["policy"],
+        "properties": {
+          "match": { "$ref": "#/$defs/matcher" },
+          "policy": {
+            "enum": ["opaque", "descend"],
+            "description": "opaque: consume the body inline as one node. descend: body ops become children."
+          },
+          "captureBody": {
+            "type": "boolean",
+            "description": "Keep body lines on the node (genericBody) for summarize `when` conditions."
+          }
+        }
+      }
+    },
+    "summarize": {
+      "type": "array",
+      "description": "First-match-wins purpose badges ({label, icon, color}) replacing the op name on nodes.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label"],
+        "properties": {
+          "match": { "$ref": "#/$defs/matcher" },
+          "when": { "$ref": "#/$defs/when" },
+          "label": { "type": "string", "minLength": 1, "description": "Short purpose label shown on the node." },
+          "icon": { "type": "string", "description": "One-or-two-character glyph. Default \"•\"." },
+          "color": { "$ref": "#/$defs/hexColor" }
+        }
+      }
+    },
+    "import": {
+      "type": "object",
+      "description": "Input-format import mapping: parses non-MLIR sources (protobuf text format) into the op graph. See docs/IMPORT_SPEC.md.",
+      "additionalProperties": false,
+      "required": ["format", "dialect", "nodes"],
+      "properties": {
+        "format": {
+          "enum": ["prototxt"],
+          "description": "Source syntax. \"prototxt\" = protobuf text format (Caffe)."
+        },
+        "detect": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "When this importer claims an opened file. Without it the mapping only applies via explicit routing.",
+          "properties": {
+            "extensions": {
+              "$ref": "#/$defs/stringOrStringArray",
+              "description": "File extensions (no dot) this importer claims, e.g. [\"prototxt\", \"pbtxt\"]."
+            },
+            "contentRegex": {
+              "type": "string",
+              "format": "regex",
+              "description": "Multiline-tested regex used to sniff files whose extension didn't match (e.g. .txt)."
+            }
+          }
+        },
+        "dialect": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Dialect assigned to every imported op; drives colors and matchers."
+        },
+        "nodes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["list", "name", "type", "inputs", "outputs"],
+          "properties": {
+            "list": {
+              "$ref": "#/$defs/stringOrStringArray",
+              "description": "Candidate repeated-field names holding the node list; the first with entries wins (e.g. [\"layer\", \"layers\"])."
+            },
+            "name": { "type": "string", "minLength": 1, "description": "Dotted field path to the node's display name." },
+            "type": { "type": "string", "minLength": 1, "description": "Dotted field path to the node's type (string or bare enum)." },
+            "inputs": { "type": "string", "minLength": 1, "description": "Dotted field path to consumed value names (Caffe: \"bottom\")." },
+            "outputs": { "type": "string", "minLength": 1, "description": "Dotted field path to produced value names (Caffe: \"top\")." },
+            "drop": {
+              "type": "array",
+              "description": "Drop a node when the value at path equals the given value (string-compared). E.g. TEST-phase layers.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["path", "equals"],
+                "properties": {
+                  "path": { "type": "string", "minLength": 1 },
+                  "equals": { "type": ["string", "number", "boolean"] }
+                }
+              }
+            }
+          }
+        },
+        "opName": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "How op names are built from node types. Default prefix is dialect + \".\".",
+          "properties": {
+            "prefix": { "type": "string", "description": "Prepended to the mapped type, e.g. \"caffe.\"." },
+            "map": {
+              "type": "object",
+              "description": "Raw type → canonical name (legacy enums like CONVOLUTION → Convolution). Unmapped types pass through.",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        },
+        "attrs": {
+          "type": "array",
+          "description": "Explicit attr extractions; win over auto-collected params on collision.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1, "description": "Dotted field path, e.g. \"convolution_param.num_output\"." },
+              "as": { "type": "string", "description": "Attr key. Default: last path segment." }
+            }
+          }
+        },
+        "collectParams": {
+          "type": "boolean",
+          "description": "Auto-hoist scalar leaves of *_param child messages into attrs. Default true."
+        },
+        "display": {
+          "type": "array",
+          "description": "First-match node subtitle templates. {path} = first value, {path*} = all values joined with ×. A rule with an unresolvable placeholder is skipped.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["template"],
+            "properties": {
+              "typeIn": { "$ref": "#/$defs/stringOrStringArray", "description": "Mapped type names this rule applies to. Omit for all." },
+              "template": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "netInputs": {
+          "type": "boolean",
+          "description": "Synthesize source ops from top-level input/input_shape/input_dim declarations. Default true."
+        },
+        "group": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Derive layout group boxes from node names. Groups need ≥2 members to render.",
+          "properties": {
+            "delimiter": { "type": "string", "description": "Prefix before this delimiter groups nodes, e.g. \"/\" for \"conv1/bn\"." },
+            "regex": { "type": "string", "format": "regex", "description": "Capture group 1 is the group prefix." }
+          },
+          "anyOf": [{ "required": ["delimiter"] }, { "required": ["regex"] }]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hexColor": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{3,8}$",
+      "description": "Hex color like \"#22d3ee\"."
+    },
+    "stringOrStringArray": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      ]
+    },
+    "matcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "AND of all present fields; array values mean \"any of\". Empty matcher matches every op.",
+      "properties": {
+        "opName": { "$ref": "#/$defs/stringOrStringArray", "description": "Exact op name(s)." },
+        "opNameRegex": { "$ref": "#/$defs/stringOrStringArray", "description": "Auto-anchored regex on the op name." },
+        "opNameContains": { "$ref": "#/$defs/stringOrStringArray", "description": "Substring of the op name (loose; prefer opName)." },
+        "dialect": { "$ref": "#/$defs/stringOrStringArray", "description": "Dialect name(s)." },
+        "hasRegion": { "type": "boolean", "description": "Op opens a region." },
+        "hasResults": { "type": "boolean", "description": "Op produces result values." },
+        "attrHas": { "$ref": "#/$defs/stringOrStringArray", "description": "Attr key(s), at least one of which must be present." }
+      }
+    },
+    "when": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Conditions on a captured region body (MLIR opaque regions). Fragments match op-name tokens, not substrings.",
+      "properties": {
+        "bodyContainsAll": { "type": "array", "items": { "type": "string" } },
+        "bodyContainsAny": { "type": "array", "items": { "type": "string" } },
+        "bodyLacksAll": { "type": "array", "items": { "type": "string" } },
+        "iteratorsInclude": { "type": "string" },
+        "iteratorsExclude": { "type": "string" }
+      }
+    }
+  }
+}

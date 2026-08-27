@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="Rill">
+  <defs>
+    <linearGradient id="fs" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8fb4ff"/>
+      <stop offset="0.55" stop-color="#5c8fef"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="48" height="48" rx="11" fill="#0c0f17"/>
+  <rect x="0.6" y="0.6" width="46.8" height="46.8" rx="10.4" fill="none" stroke="#1c2030"/>
+  <path d="M24 9 L24 18 C24 21 16 21 16 24 L16 31 C16 34 32 34 32 37 L32 40"
+        fill="none" stroke="#8fb4ff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity="0.24"/>
+  <path d="M24 9 L24 18 C24 21 16 21 16 24 L16 31 C16 34 32 34 32 37 L32 40"
+        fill="none" stroke="url(#fs)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="24" cy="8" r="3" fill="#dfe9ff"/>
+  <circle cx="16" cy="24" r="2" fill="#bcd3ff"/>
+  <circle cx="32" cy="40" r="2.7" fill="#22d3ee"/>
+</svg>

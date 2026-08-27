@@ -1,0 +1,29 @@
+{
+  "name": "acc-accelerator",
+  "version": 1,
+  "dialects": {
+    "acc": "#22d3ee",
+    "acc_rt": "#a78bfa"
+  },
+  "classify": [
+    { "match": { "opNameContains": "acc_rt." }, "as": "structural" },
+    { "match": { "opName": ["acc.alloc", "acc.dealloc", "acc.dma"] }, "as": "aux" },
+    { "match": { "opName": "acc.launch", "hasRegion": true }, "as": "compute" }
+  ],
+  "regions": [
+    { "match": { "opName": "acc.launch" }, "policy": "opaque", "captureBody": true }
+  ],
+  "summarize": [
+    {
+      "match": { "opName": "acc.launch" },
+      "when": { "bodyContainsAll": ["mulf", "addf"], "iteratorsInclude": "reduction" },
+      "label": "matmul", "icon": "×+", "color": "#ef4444"
+    },
+    {
+      "match": { "opName": "acc.launch" },
+      "when": { "bodyContainsAny": ["maximumf", "maxf"] },
+      "label": "ReLU", "icon": "↑", "color": "#f47316"
+    },
+    { "match": { "opName": "acc.launch" }, "label": "kernel", "icon": "▣" }
+  ]
+}

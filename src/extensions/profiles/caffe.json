@@ -1,0 +1,112 @@
+{
+  "name": "builtin-caffe",
+  "version": 1,
+  "description": "Built-in profile for Caffe prototxt networks, including legacy V1 ('layers' list, enum types) files. Its `import` section maps protobuf-text layers onto the op graph (docs/IMPORT_SPEC.md); loading a user profile with its own `import` section overrides it — copy this file as a starting template for custom Caffe variants.",
+
+  "import": {
+    "format": "prototxt",
+    "detect": {
+      "extensions": ["prototxt", "pbtxt"],
+      "contentRegex": "^\\s*(name\\s*:|input\\s*:|layers?\\s*[{<])"
+    },
+    "dialect": "caffe",
+    "nodes": {
+      "list": ["layer", "layers"],
+      "name": "name",
+      "type": "type",
+      "inputs": "bottom",
+      "outputs": "top",
+      "drop": [{ "path": "include.phase", "equals": "TEST" }]
+    },
+    "opName": {
+      "prefix": "caffe.",
+      "map": {
+        "CONVOLUTION": "Convolution",
+        "DECONVOLUTION": "Deconvolution",
+        "POOLING": "Pooling",
+        "INNER_PRODUCT": "InnerProduct",
+        "RELU": "ReLU",
+        "PRELU": "PReLU",
+        "TANH": "TanH",
+        "SIGMOID": "Sigmoid",
+        "LRN": "LRN",
+        "BATCHNORM": "BatchNorm",
+        "BN": "BatchNorm",
+        "SCALE": "Scale",
+        "SOFTMAX": "Softmax",
+        "SOFTMAX_LOSS": "SoftmaxWithLoss",
+        "EUCLIDEAN_LOSS": "EuclideanLoss",
+        "HINGE_LOSS": "HingeLoss",
+        "SIGMOID_CROSS_ENTROPY_LOSS": "SigmoidCrossEntropyLoss",
+        "ACCURACY": "Accuracy",
+        "DATA": "Data",
+        "IMAGE_DATA": "ImageData",
+        "HDF5_DATA": "HDF5Data",
+        "MEMORY_DATA": "MemoryData",
+        "DROPOUT": "Dropout",
+        "CONCAT": "Concat",
+        "ELTWISE": "Eltwise",
+        "SLICE": "Slice",
+        "SPLIT": "Split",
+        "FLATTEN": "Flatten",
+        "RESHAPE": "Reshape",
+        "CROP": "Crop",
+        "SILENCE": "Silence",
+        "ARGMAX": "ArgMax",
+        "POWER": "Power",
+        "EXP": "Exp",
+        "ABSVAL": "AbsVal",
+        "MVN": "MVN",
+        "THRESHOLD": "Threshold"
+      }
+    },
+    "collectParams": true,
+    "display": [
+      { "typeIn": ["Convolution", "Deconvolution"], "template": "{convolution_param.num_output}×{convolution_param.kernel_size*}" },
+      { "typeIn": ["Convolution", "Deconvolution"], "template": "{convolution_param.num_output}×{convolution_param.kernel_h}×{convolution_param.kernel_w}" },
+      { "typeIn": ["Pooling"], "template": "{pooling_param.pool} {pooling_param.kernel_size}/{pooling_param.stride}" },
+      { "typeIn": ["Pooling"], "template": "{pooling_param.pool}" },
+      { "typeIn": ["InnerProduct"], "template": "→{inner_product_param.num_output}" },
+      { "typeIn": ["LRN"], "template": "local {lrn_param.local_size}" },
+      { "typeIn": ["Input"], "template": "{input_param.shape.dim*}" },
+      { "typeIn": ["Eltwise"], "template": "{eltwise_param.operation}" }
+    ],
+    "netInputs": true,
+    "group": { "delimiter": "/" }
+  },
+
+  "dialects": {
+    "caffe": "#f5bf24"
+  },
+
+  "classify": [
+    { "match": { "opName": ["caffe.Silence", "caffe.Accuracy"] }, "as": "structural" },
+    {
+      "match": {
+        "opName": [
+          "caffe.Dropout",
+          "caffe.Split",
+          "caffe.Flatten",
+          "caffe.Reshape",
+          "caffe.Slice"
+        ]
+      },
+      "as": "aux"
+    }
+  ],
+
+  "summarize": [
+    { "match": { "opName": ["caffe.Convolution", "caffe.Deconvolution"] }, "label": "conv", "icon": "⊛", "color": "#e945a0" },
+    { "match": { "opName": "caffe.InnerProduct" }, "label": "fc", "icon": "→", "color": "#ef4444" },
+    { "match": { "opName": "caffe.Pooling" }, "label": "pool", "icon": "▽", "color": "#22d3ee" },
+    { "match": { "opName": ["caffe.ReLU", "caffe.PReLU"] }, "label": "ReLU", "icon": "↑", "color": "#f47316" },
+    { "match": { "opName": ["caffe.Sigmoid", "caffe.TanH"] }, "label": "activation", "icon": "σ", "color": "#f47316" },
+    { "match": { "opName": ["caffe.Softmax", "caffe.SoftmaxWithLoss"] }, "label": "softmax", "icon": "eˣ", "color": "#f5bf24" },
+    { "match": { "opNameContains": "Loss" }, "label": "loss", "icon": "Σ", "color": "#ef4444" },
+    { "match": { "opName": ["caffe.BatchNorm", "caffe.Scale", "caffe.LRN", "caffe.MVN", "caffe.LayerNorm"] }, "label": "norm", "icon": "μσ", "color": "#0fb8a6" },
+    { "match": { "opName": "caffe.Concat" }, "label": "concat", "icon": "⊕", "color": "#a3e635" },
+    { "match": { "opName": "caffe.Eltwise" }, "label": "eltwise", "icon": "×", "color": "#a3e635" },
+    { "match": { "opName": ["caffe.input", "caffe.Input"] }, "label": "input", "icon": "▷", "color": "#5c8fef" },
+    { "match": { "opName": ["caffe.Data", "caffe.ImageData", "caffe.HDF5Data", "caffe.MemoryData"] }, "label": "data", "icon": "▷", "color": "#5c8fef" }
+  ]
+}

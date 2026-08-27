@@ -1,0 +1,121 @@
+{
+  "name": "builtin-core",
+  "version": 1,
+  "description": "Built-in profile for linalg + arith/tensor + IREE host dialects. This file uses the exact same format as user-loadable profiles (docs/PROFILE_SPEC.md) — copy it as a starting template. Rule lists are first-match-wins; body fragments match op-name tokens ('mulf' matches 'arith.mulf', not substrings).",
+
+  "dialects": {
+    "arith": "#f5bf24",
+    "hal": "#22d3ee",
+    "tensor": "#34d399",
+    "linalg": "#e945a0",
+    "util": "#a78bfa",
+    "module": "#5c8fef",
+    "func": "#a78bfa",
+    "scf": "#f47316",
+    "memref": "#0fb8a6",
+    "affine": "#a3e635",
+    "vector": "#ef4444",
+    "math": "#f5bf24",
+    "cf": "#f47316",
+    "flow": "#f47316",
+    "stream": "#0fb8a6"
+  },
+
+  "classify": [
+    { "match": { "opName": "module" }, "as": "structural" },
+    { "match": { "dialect": "block" }, "as": "structural" },
+    { "match": { "opNameContains": "func" }, "as": "structural" },
+    { "match": { "opNameContains": "return" }, "as": "structural" },
+    { "match": { "opName": "util.global" }, "as": "structural" },
+    { "match": { "opNameContains": "hal." }, "as": "structural" },
+    {
+      "match": {
+        "opName": [
+          "arith.constant",
+          "tensor.empty",
+          "util.global.load",
+          "linalg.broadcast",
+          "linalg.fill",
+          "tensor.extract_slice",
+          "tensor.insert_slice",
+          "tensor.expand_shape",
+          "tensor.collapse_shape",
+          "linalg.transpose"
+        ]
+      },
+      "as": "aux"
+    }
+  ],
+
+  "regions": [
+    { "match": { "opName": "linalg.generic" }, "policy": "opaque", "captureBody": true },
+    { "match": { "opName": "tensor.pad" }, "policy": "opaque", "captureBody": false }
+  ],
+
+  "summarize": [
+    {
+      "match": { "opName": "linalg.generic" },
+      "when": { "bodyContainsAll": ["mulf", "addf"], "iteratorsInclude": "reduction" },
+      "label": "matmul/MAC", "icon": "×+", "color": "#ef4444"
+    },
+    {
+      "match": { "opName": "linalg.generic" },
+      "when": { "bodyContainsAll": ["exp", "divf"] },
+      "label": "sigmoid/SiLU", "icon": "σ", "color": "#f5bf24"
+    },
+    {
+      "match": { "opName": "linalg.generic" },
+      "when": { "bodyContainsAll": ["exp"] },
+      "label": "softmax/exp", "icon": "eˣ", "color": "#f5bf24"
+    },
+    {
+      "match": { "opName": "linalg.generic" },
+      "when": { "bodyContainsAll": ["cmpf", "select"] },
+      "label": "leaky ReLU", "icon": "⌐", "color": "#f47316"
+    },
+    {
+      "match": { "opName": "linalg.generic" },
+      "when": { "bodyContainsAny": ["maximumf", "maxf"] },
+      "label": "ReLU/max", "icon": "↑", "color": "#f47316"
+    },
+    {
+      "match": { "opName": "linalg.generic" },
+      "when": { "bodyContainsAll": ["addf"], "bodyLacksAll": ["mulf"] },
+      "label": "bias add", "icon": "+", "color": "#0fb8a6"
+    },
+    {
+      "match": { "opName": "linalg.generic" },
+      "when": { "bodyContainsAll": ["mulf"], "iteratorsExclude": "reduction" },
+      "label": "elem mul", "icon": "×", "color": "#a3e635"
+    },
+    {
+      "match": { "opName": "linalg.generic" },
+      "when": { "bodyContainsAny": ["sitofp", "fptrunc"] },
+      "label": "cast", "icon": "↔", "color": "#a78bfa"
+    },
+    {
+      "match": { "opName": "linalg.generic" },
+      "when": { "bodyContainsAll": ["subf"] },
+      "label": "subtract", "icon": "−", "color": "#f47316"
+    },
+    {
+      "match": { "opName": "linalg.generic" },
+      "when": { "bodyContainsAll": ["divf"] },
+      "label": "divide", "icon": "÷", "color": "#f47316"
+    },
+    {
+      "match": { "opName": "linalg.generic" },
+      "when": { "bodyContainsAll": ["negf"] },
+      "label": "negate", "icon": "−", "color": "#f47316"
+    },
+    {
+      "match": { "opName": "linalg.generic" },
+      "when": { "iteratorsInclude": "reduction" },
+      "label": "reduction", "icon": "Σ", "color": "#ef4444"
+    },
+    {
+      "match": { "opName": "linalg.generic" },
+      "label": "elementwise", "icon": "∘", "color": "#34d399"
+    }
+  ]
+}

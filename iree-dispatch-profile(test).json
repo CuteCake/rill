@@ -1,0 +1,120 @@
+{
+  "name": "iree-flow-yolo",
+  "version": 1,
+  "description": "Profile for IREE dispatch-creation stage IR (flow / iree_tensor_ext / linalg / tensor / arith / util / hal), tuned on a YOLO-style module. Host plumbing (module, util.*, hal.*, flow.return, dispatch.tensor.store, workgroup_count_from_slice) is hidden; buffer bookkeeping (arith.constant, tensor.empty, linalg.fill, dispatch.tensor.load, flow.tensor.reshape/splat/slice/update) becomes mini aux nodes; each flow.dispatch.workgroups collapses to ONE node whose captured body is pattern-matched into conv/matmul, SiLU, sigmoid, max-pool, and elementwise labels, so the top-level graph is the 100-dispatch dataflow. If you would rather see the linalg.generic ops inside each dispatch as separate nodes, delete the regions[] entry for flow.dispatch.workgroups (or change its policy to \"descend\") and change its classify entry to \"container\" — the identical summarize rules already cover linalg.generic.",
+  "dialects": {
+    "flow": "#38bdf8",
+    "iree_tensor_ext": "#22d3ee",
+    "linalg": "#f472b6",
+    "tensor": "#a78bfa",
+    "arith": "#94a3b8",
+    "util": "#64748b",
+    "hal": "#fbbf24",
+    "module": "#475569"
+  },
+  "classify": [
+    { "match": { "opName": "module" }, "as": "structural" },
+    { "match": { "dialect": "util" }, "as": "structural" },
+    { "match": { "dialect": "hal" }, "as": "structural" },
+    { "match": { "opName": "flow.return" }, "as": "structural" },
+    { "match": { "opName": ["iree_tensor_ext.dispatch.tensor.store", "iree_tensor_ext.dispatch.workgroup_count_from_slice"] }, "as": "structural" },
+    { "match": { "opName": "iree_tensor_ext.dispatch.tensor.load" }, "as": "aux" },
+    { "match": { "opName": "arith.constant" }, "as": "aux" },
+    { "match": { "opName": ["tensor.empty", "linalg.fill"] }, "as": "aux" },
+    { "match": { "opName": ["flow.tensor.reshape", "flow.tensor.splat", "flow.tensor.slice", "flow.tensor.update"] }, "as": "aux" },
+    { "match": { "opName": "flow.dispatch.workgroups" }, "as": "compute" },
+    { "match": { "opName": "linalg.generic" }, "as": "compute" }
+  ],
+  "regions": [
+    { "match": { "opName": "flow.dispatch.workgroups" }, "policy": "opaque", "captureBody": true },
+    { "match": { "opName": "linalg.generic" }, "policy": "opaque", "captureBody": true }
+  ],
+  "summarize": [
+    {
+      "match": { "opName": ["flow.dispatch.workgroups", "linalg.generic"] },
+      "when": { "bodyContainsAny": ["maximumf", "maxf", "maxnumf"], "iteratorsInclude": "reduction" },
+      "label": "max pool",
+      "icon": "⊔",
+      "color": "#f59e0b"
+    },
+    {
+      "match": { "opName": ["flow.dispatch.workgroups", "linalg.generic"] },
+      "when": { "bodyContainsAll": ["exp", "divf", "mulf"] },
+      "label": "SiLU / swish",
+      "icon": "∿",
+      "color": "#22c55e"
+    },
+    {
+      "match": { "opName": ["flow.dispatch.workgroups", "linalg.generic"] },
+      "when": { "bodyContainsAll": ["exp", "divf"] },
+      "label": "sigmoid",
+      "icon": "σ",
+      "color": "#10b981"
+    },
+    {
+      "match": { "opName": ["flow.dispatch.workgroups", "linalg.generic"] },
+      "when": { "bodyContainsAll": ["mulf", "addf"], "iteratorsInclude": "reduction" },
+      "label": "conv / matmul",
+      "icon": "×+",
+      "color": "#ef4444"
+    },
+    {
+      "match": { "opName": ["flow.dispatch.workgroups", "linalg.generic"] },
+      "when": { "bodyContainsAny": ["addf"], "bodyLacksAll": ["mulf", "divf"], "iteratorsInclude": "reduction" },
+      "label": "reduce sum",
+      "icon": "Σ",
+      "color": "#f97316"
+    },
+    {
+      "match": { "opName": ["flow.dispatch.workgroups", "linalg.generic"] },
+      "when": { "bodyContainsAny": ["maximumf", "maxf", "maxnumf"] },
+      "label": "ReLU / max",
+      "icon": "↑",
+      "color": "#f97316"
+    },
+    {
+      "match": { "opName": ["flow.dispatch.workgroups", "linalg.generic"] },
+      "when": { "bodyContainsAny": ["exp"] },
+      "label": "exp",
+      "icon": "e",
+      "color": "#34d399"
+    },
+    {
+      "match": { "opName": ["flow.dispatch.workgroups", "linalg.generic"] },
+      "when": { "bodyContainsAny": ["divf"] },
+      "label": "divide / scale",
+      "icon": "÷",
+      "color": "#60a5fa"
+    },
+    {
+      "match": { "opName": ["flow.dispatch.workgroups", "linalg.generic"] },
+      "when": { "bodyContainsAny": ["subf"] },
+      "label": "elementwise sub",
+      "icon": "−",
+      "color": "#818cf8"
+    },
+    {
+      "match": { "opName": ["flow.dispatch.workgroups", "linalg.generic"] },
+      "when": { "bodyContainsAny": ["mulf"] },
+      "label": "elementwise mul",
+      "icon": "×",
+      "color": "#c084fc"
+    },
+    {
+      "match": { "opName": ["flow.dispatch.workgroups", "linalg.generic"] },
+      "when": { "bodyContainsAny": ["addf"] },
+      "label": "elementwise add",
+      "icon": "+",
+      "color": "#a78bfa"
+    },
+    { "match": { "opName": "flow.dispatch.workgroups" }, "label": "dispatch", "icon": "▣", "color": "#38bdf8" },
+    { "match": { "opName": "linalg.generic" }, "label": "elementwise", "icon": "∘", "color": "#f472b6" },
+    { "match": { "opName": "flow.tensor.update" }, "label": "concat / insert", "icon": "⊕", "color": "#0ea5e9" },
+    { "match": { "opName": "flow.tensor.slice" }, "label": "slice", "icon": "⊂", "color": "#0ea5e9" },
+    { "match": { "opName": "flow.tensor.reshape" }, "label": "reshape", "icon": "⇄", "color": "#7dd3fc" },
+    { "match": { "opName": "flow.tensor.splat" }, "label": "splat", "icon": "▦", "color": "#7dd3fc" },
+    { "match": { "opName": "linalg.fill" }, "label": "fill", "icon": "▨", "color": "#f9a8d4" },
+    { "match": { "opName": "tensor.empty" }, "label": "empty", "icon": "□", "color": "#a78bfa" },
+    { "match": { "opName": "iree_tensor_ext.dispatch.tensor.load" }, "label": "tensor load", "icon": "↓", "color": "#22d3ee" }
+  ]
+}

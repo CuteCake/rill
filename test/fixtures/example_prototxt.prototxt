@@ -1,0 +1,46 @@
+layer {
+  name: "input_1"
+  type: "Input"
+  top: "input_1"
+  input_param {
+    shape {
+      dim: 1
+      dim: 3
+      dim: 224
+      dim: 224
+    }
+  }
+}
+layer {
+  name: "Conv_0"
+  type: "Convolution"
+  bottom: "input_1"
+  top: "Conv_0"
+  convolution_param {
+    num_output: 96
+    bias_term: true
+    pad: 0
+    pad: 0
+    pad: 0
+    pad: 0
+    kernel_size: 4
+    kernel_size: 4
+    group: 1
+    stride: 4
+    stride: 4
+    dilation: 1
+    dilation: 1
+  }
+}
+layer {
+  name: "Add_12"
+  type: "LayerNorm"
+  bottom: "Conv_0"
+  top: "Add_12"
+  layer_norm_param {
+    axis: 1
+    eps: 1e-06
+    output_mean_var: false
+    uses_mean: true
+  }
+}

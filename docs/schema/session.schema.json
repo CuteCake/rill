@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rill.dev/schema/session.schema.json",
+  "title": "Rill debug session",
+  "description": "A saved pass-pipeline debugging session: snapshot references (names + content hashes, never embedded IR), tracked probes, manual cross-pass mapping overrides, notes, and reserved story-mode views.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "version", "snapshots"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "kind": { "const": "rill-session" },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "name": { "type": "string" },
+    "created": { "type": "string" },
+    "notes": { "type": "string" },
+    "snapshots": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "hash"],
+        "properties": {
+          "file": { "type": "string", "minLength": 1 },
+          "hash": { "type": "string", "minLength": 1 },
+          "opCount": { "type": "integer" }
+        }
+      }
+    },
+    "probes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "originIndex", "keys"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string" },
+          "color": { "type": "string" },
+          "originIndex": { "type": "integer", "minimum": 0 },
+          "keys": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string" }
+          },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "overrides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pair", "action", "from", "to"],
+        "properties": {
+          "pair": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "integer", "minimum": 0 }
+          },
+          "action": { "enum": ["link", "unlink"] },
+          "from": { "type": "array", "items": { "type": "string" } },
+          "to": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "views": {
+      "type": "array",
+      "description": "Reserved for story mode: named annotated views stepped through in order. Item contents are intentionally loose and round-tripped verbatim by v1.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "name": { "type": "string" },
+          "index": { "type": "integer" },
+          "probes": { "type": "array" },
+          "camera": { "type": "object" },
+          "notes": { "type": "string" }
+        }
+      }
+    }
+  }
+}
