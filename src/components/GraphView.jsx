@@ -41,6 +41,8 @@ export default function GraphView({
   hiVals,
   onValClick,
   registry,
+  hoveredNodeId,
+  onNodeHover,
   // Pass-pipeline context (all optional; absent for single documents):
   stepContext,      // {prevPos: Map<opId,{x,y}>|null, diff, ghosts} for this snapshot
   probeHalos,       // Map<opId, colorString> — tracked-probe membership
@@ -59,6 +61,7 @@ export default function GraphView({
       return { ops, ids };
     });
   }
+  useEffect(() => { onNodeHover?.(null); }, [ops, onNodeHover]);
   const canvasRef = useRef(null);
   const viewState = useRef({ px: 40, py: 40, z: 1, drag: false, lx: 0, ly: 0 });
   const rafId = useRef(null);
@@ -93,6 +96,8 @@ export default function GraphView({
 
   // registry is a dep: profile changes alter op classification (layout) and node colors/labels (draw)
   const rawLayout = useMemo(() => computeDispatchLayout(layoutOps, graph, showAux, locGrouping, expandedDispatches), [layoutOps, graph, showAux, locGrouping, registry, expandedDispatches]);
+
+  useEffect(() => { onNodeHover?.(null); }, [rawLayout, onNodeHover]);
 
   // Subgraph stability: reconcile each fresh layout against the previous
   // node positions so growing/shrinking the trace doesn't reshuffle nodes
@@ -405,6 +410,12 @@ export default function GraphView({
     drawEdges(ctx, layout, hiVals, primary, related, viewport, vs.z);
     drawNodes(ctx, layout, hiVals, primary, related, viewport, vs.z);
     drawDispatchPorts(ctx, layout.dispatchGroups, hiVals);
+    const hovered = layout.nodes.find((p) => p.node.id === hoveredNodeId);
+    if (hovered) {
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2 / vs.z;
+      ctx.strokeRect(hovered.x - 3, hovered.y - 3, hovered.w + 6, hovered.h + 6);
+    }
     if (!subgraphMode && (stepContext?.diff || probeHalos?.size)) {
       drawOverlays(
         ctx,
@@ -416,7 +427,7 @@ export default function GraphView({
     }
 
     ctx.restore();
-  }, [layout, hiVals, graph, locGrouping, registry, subgraphMode, stepContext, ghosts, hiGhostId, probeHalos]);
+  }, [layout, hiVals, graph, locGrouping, registry, subgraphMode, stepContext, ghosts, hiGhostId, probeHalos, hoveredNodeId]);
 
   /** Schedule a single RAF-throttled redraw. */
   const requestRedraw = useCallback(() => {
@@ -530,6 +541,7 @@ export default function GraphView({
 
   function handleWheel(e) {
     e.preventDefault();
+    onNodeHover?.(null);
     const vs = viewState.current;
     const pos = getCanvasPos(e);
     const factor = e.deltaY < 0 ? 1.12 : 0.89;
@@ -551,6 +563,7 @@ export default function GraphView({
     if (best && isDispatch(best.node) && (best.expandedDispatch
       ? worldY >= best.y + 16 && worldY <= best.y + 56 && worldX >= best.x + best.w - 110
       : worldY >= best.y + best.h - 15)) {
+      onNodeHover?.(null);
       toggleDispatch(best.node.id);
       return;
     }
@@ -569,7 +582,15 @@ export default function GraphView({
 
   function handleMouseMove(e) {
     const vs = viewState.current;
-    if (!vs.drag) return;
+    if (!vs.drag) {
+      const pos = getCanvasPos(e);
+      const x = (pos.x - vs.px) / vs.z;
+      const y = (pos.y - vs.py) / vs.z;
+      const hit = hitTestNodes(spatialGrid.query(x, y), x, y);
+      onNodeHover?.(hit?.node.id ?? null);
+      return;
+    }
+    onNodeHover?.(null);
     const pos = getCanvasPos(e);
     vs.px += pos.x - vs.lx;
     vs.py += pos.y - vs.ly;
@@ -684,7 +705,7 @@ export default function GraphView({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onMouseLeave={() => { handleMouseUp(); onNodeHover?.(null); }}
         style={{ flex: 1, width: "100%", cursor: "grab", display: "block" }}
       />
 

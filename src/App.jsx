@@ -53,6 +53,18 @@ export default function App() {
   const [view, setView] = useState("graph");
   const [selId, setSelId] = useState(null);
   const [hiVals, setHiVals] = useState([]);
+  const [hoveredNodeId, setHoveredNodeId] = useState(null);
+  const detailCards = useRef(new Map());
+  useEffect(() => {
+    const card = detailCards.current.get(hoveredNodeId);
+    if (!card) return;
+    const panel = card.parentElement;
+    const bounds = card.getBoundingClientRect();
+    const visible = panel.getBoundingClientRect();
+    if (bounds.top < visible.top || bounds.bottom > visible.bottom) {
+      panel.scrollTop += bounds.top - visible.top - 8;
+    }
+  }, [hoveredNodeId]);
   const [collapsed, setCollapsed] = useState(new Set());
   const [search, setSearch] = useState("");
   const fileRef = useRef(null);
@@ -1037,6 +1049,8 @@ export default function App() {
           <>
             <GraphView
               ops={nodes}
+              hoveredNodeId={hoveredNodeId}
+              onNodeHover={setHoveredNodeId}
               graph={graph}
               hiVals={hiVals}
               onValClick={onValClick}
@@ -1096,7 +1110,7 @@ export default function App() {
                     }}
                   >
                     {selectionDiffs.map(({ op, match: m, rows }) => (
-                      <div key={op.id}>
+                      <div key={op.id} style={{ background: hoveredNodeId === op.id ? "#fbbf2420" : "transparent" }}>
                         <div style={{ display: "flex", gap: 6, alignItems: "center", lineHeight: 1.9 }}>
                           <span style={{ color: C.text, flexShrink: 0 }}>{op.opName}</span>
                           {m ? (
@@ -1169,8 +1183,10 @@ export default function App() {
                 )}
                 <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
                   {flowNodes.map((n) => (
+                    <div key={n.id} data-detail-node={n.id}
+                      ref={(el) => { if (el) detailCards.current.set(n.id, el); else detailCards.current.delete(n.id); }}
+                      style={{ borderRadius: 6, border: `2px solid ${hoveredNodeId === n.id ? '#fbbf24' : 'transparent'}`, background: hoveredNodeId === n.id ? '#fbbf2415' : 'transparent', transition: 'border-color 100ms, background 100ms' }}>
                     <OpNode
-                      key={n.id}
                       node={n}
                       nodes={nodes}
                       graph={graph}
@@ -1182,6 +1198,7 @@ export default function App() {
                       onToggle={onToggle}
                       profileDebug={profileDebug}
                     />
+                    </div>
                   ))}
                 </div>
               </div>

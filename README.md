@@ -49,6 +49,8 @@ Click any node to highlight its entire def-use chain and open a detail panel wit
 
 IREE `flow.dispatch.workgroups` and `flow.dispatch.region` appear as expandable containers directly in the graph. Their internal operations and dataflow are visible by default; input and output values appear as boundary ports instead of separate nodes. Use **Collapse all dispatches / Expand all dispatches** for a global view change, or each container's **Collapse / Expand inline** control individually. Containers reserve space in the outer layout, and inner operations retain selection and source/IR identity. No custom profile is required; custom dispatch region rules must use `"policy": "descend"` to make their contents available.
 
+When several operations are selected, hovering one graph node outlines it and its corresponding detail card in amber. Offscreen detail cards scroll into view without changing the selection.
+
 ### 🔬 Subgraph mode
 
 On a full model, the ops you care about are often scattered across the canvas, connected by edges that span half the graph. Select some nodes and hit **Subgraph**: just the selection and its direct neighbors are re-laid out as their own compact graph, so you can actually read how they connect. It stays interactive — clicking nodes grows or shrinks the trace live — and **stable layout reconciliation** keeps the nodes you're already looking at pinned in place while newly pulled-in nodes appear next to the neighbors that brought them in, so the picture never reshuffles under you. Hit **Subgraph** again (or clear the selection) to return to the full graph.
