@@ -68,19 +68,20 @@ export const LAYOUT = {
  * @param {boolean}       locGrouping - if true, group nodes by location
  * @returns {{ nodes: Array, edges: Array, w: number, h: number }}
  */
-export function computeLayout(ops, graph, showAux = true, locGrouping = false) {
+export function computeLayout(ops, graph, showAux = true, locGrouping = false, options = {}) {
   const { NODE_W: NW, NODE_H: NH, AUX_H: AH, DUMMY_W: DW, GAP_X: GX, GAP_Y: GY } = LAYOUT;
 
   // ── Step 1: Filter ops ──
   const opsById = new Map(ops.map((o) => [o.id, o]));
 
   const visibleOps = ops.filter((n) => {
-    if (n.results.length === 0) return false;
-    if (isStructuralOp(n)) return false;
+    if (n.results.length === 0 && !n.graphAlwaysShow) return false;
+    if (isStructuralOp(n) && !n.graphAlwaysShow) return false;
     if (!showAux && isAuxiliaryOp(n)) return false;
-    if (n.parentId !== null) {
-      const parent = opsById.get(n.parentId);
-      if (parent && !isStructuralOp(parent)) return false;
+    let parent = opsById.get(n.parentId);
+    while (parent) {
+      if (!isStructuralOp(parent)) return false;
+      parent = opsById.get(parent.parentId);
     }
     return true;
   });
@@ -96,26 +97,27 @@ export function computeLayout(ops, graph, showAux = true, locGrouping = false) {
 
   for (const n of visibleOps) {
     const visited = new Set();
-    const queue = [...n.operands];
+    const queue = n.operands.map((value) => ({ value, targetValue: value }));
 
     while (queue.length) {
-      const val = queue.shift();
-      if (visited.has(val)) continue;
-      visited.add(val);
+      const { value: val, targetValue } = queue.shift();
+      const visitKey = options.preserveValues ? `${val}:${targetValue}` : val;
+      if (visited.has(visitKey)) continue;
+      visited.add(visitKey);
 
       const defId = graph.defs[val];
       if (defId === undefined || defId === n.id) continue;
 
       if (idSet.has(defId)) {
-        const key = `${defId}->${n.id}`;
+        const key = options.preserveValues ? `${defId}->${n.id}:${val}:${targetValue}` : `${defId}->${n.id}`;
         if (!edgeSet.has(key)) {
           edgeSet.add(key);
-          visibleEdges.push({ from: defId, to: n.id, value: val });
+          visibleEdges.push({ from: defId, to: n.id, value: val, targetValue });
         }
       } else {
         const defOp = opsById.get(defId);
         if (defOp) {
-          for (const op of defOp.operands) queue.push(op);
+          for (const value of defOp.operands) queue.push({ value, targetValue });
         }
       }
     }
@@ -127,7 +129,7 @@ export function computeLayout(ops, graph, showAux = true, locGrouping = false) {
     connectedIds.add(e.from);
     connectedIds.add(e.to);
   }
-  const connectedOps = visibleOps.filter((n) => connectedIds.has(n.id));
+  const connectedOps = visibleOps.filter((n) => connectedIds.has(n.id) || n.graphAlwaysShow || /^flow\.dispatch\.(workgroups|region)$/.test(n.opName));
   if (!connectedOps.length) {
     return { nodes: [], edges: [], w: 0, h: 0, NW, NH, GY, locGroups: null };
   }
@@ -404,7 +406,7 @@ export function computeLayout(ops, graph, showAux = true, locGrouping = false) {
   function nodeWidth(id) {
     // Aux ops use full node width for layout spacing to prevent overlapping;
     // they are rendered smaller but need the same gap allocation.
-    return dummySet.has(id) ? DW : NW;
+    return dummySet.has(id) ? DW : opsById.get(id)?.layoutWidth || NW;
   }
 
   // ════════════════════════════════════════════════════════════════════
@@ -608,6 +610,14 @@ export function computeLayout(ops, graph, showAux = true, locGrouping = false) {
     if (delta) for (const id in coord) coord[id] += delta;
   });
 
+  const layerY = {};
+  const layerHeight = {};
+  let nextLayerY = 0;
+  for (const lk of sortedLayerKeys) {
+    layerY[lk] = nextLayerY;
+    layerHeight[lk] = Math.max(NH, ...layers[lk].map((n) => n.layoutHeight || NH));
+    nextLayerY += layerHeight[lk] + GY;
+  }
   for (const lk of sortedLayerKeys) {
     const layerNodes = layers[lk];
     for (let i = 0; i < layerNodes.length; i++) {
@@ -615,13 +625,13 @@ export function computeLayout(ops, graph, showAux = true, locGrouping = false) {
       const isDummy = dummySet.has(n.id);
       const isAux = auxSet.has(n.id);
       const nw = nodeWidth(n.id);
-      const nh = isDummy ? 0 : isAux ? AH : NH;
+      const nh = isDummy ? 0 : n.layoutHeight || (isAux ? AH : NH);
       const vals = assignments
         .map((a) => a.coord[n.id])
         .sort((a, b) => a - b);
       positions[n.id] = {
         x: (vals[1] + vals[2]) / 2 - nw / 2,
-        y: lk * (NH + GY) + (isDummy ? NH / 2 : isAux ? (NH - AH) / 2 : 0),
+        y: layerY[lk] + (isDummy ? layerHeight[lk] / 2 : isAux ? (NH - AH) / 2 : 0),
         w: nw,
         h: nh,
         node: n,
@@ -897,7 +907,7 @@ export function computeLayout(ops, graph, showAux = true, locGrouping = false) {
   }
   if (!isFinite(finalMinX)) { finalMinX = 0; finalMaxX = 0; }
   const finalW = finalMaxX - finalMinX + 40;
-  const maxY = sortedLayerKeys.length * (NH + GY);
+  const maxY = nextLayerY;
 
   // ── Step 7: Edge geometry with waypoints and port spreading ──
   const fromEdgesMap = {};
@@ -991,6 +1001,7 @@ export function computeLayout(ops, graph, showAux = true, locGrouping = false) {
       from: origEdge.from,
       to: origEdge.to,
       value: origEdge.value,
+      targetValue: origEdge.targetValue,
       points,
       layerDist: chain.length + 1,
     });

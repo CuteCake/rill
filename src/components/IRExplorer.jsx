@@ -1,3 +1,6 @@
+import { splitTopLevel } from "../parser/dispatch-signature.js";
+import DispatchDetails from "./DispatchDetails.jsx";
+import { isDispatch } from "../graph/dispatch.js";
 import { colors, fonts, getDialectColor } from "../utils/theme.js";
 import { getActiveRegistry } from "../extensions/registry.js";
 
@@ -52,7 +55,9 @@ function TypeBadge({ type }) {
         color: color,
         border: `1px solid ${color}20`,
         marginRight: 3,
-        whiteSpace: "nowrap",
+        whiteSpace: "normal",
+        overflowWrap: "anywhere",
+        maxWidth: "100%",
         lineHeight: "18px",
       }}
     >
@@ -113,6 +118,8 @@ export default function OpNode({
   depth = 0,
   profileDebug = false,
 }) {
+  let enclosingDispatch = nodes.find((op) => op.id === node.parentId);
+  while (enclosingDispatch && !isDispatch(enclosingDispatch)) enclosingDispatch = nodes.find((op) => op.id === enclosingDispatch.parentId);
   const color = getDialectColor(node.dialect);
   const isSel = selId === node.id;
   const inFlow = hiVals.some((v) => graph.defs[v] === node.id);
@@ -141,26 +148,20 @@ export default function OpNode({
   const scope = node.parentId !== null ? `@${node.parentId}` : "";
   function renderIO(label, str) {
     if (!str) return null;
-    return (
-      <span style={{ marginRight: 8 }}>
-        <span style={{ color: C.dim, fontSize: 10 }}>{label}(</span>
-        {str.split(",").map((part, i, arr) => {
-          const valMatch = part.match(/%[\w#.$]+/);
-          const scopedName = valMatch ? valMatch[0] + scope : null;
-          return (
-            <span key={i}>
-              {valMatch ? (
-                <ValTag name={scopedName} displayName={valMatch[0]} active={hiVals.includes(scopedName)} onClick={onValClick} />
-              ) : (
-                <span style={{ fontSize: 10, color: C.text }}>{part.trim()}</span>
-              )}
-              {i < arr.length - 1 && <span style={{ color: C.dim }}>, </span>}
-            </span>
-          );
-        })}
-        <span style={{ color: C.dim, fontSize: 10 }}>)</span>
-      </span>
-    );
+    const separator = str.indexOf(':');
+    const names = (separator >= 0 ? str.slice(0, separator) : str).match(/%[\w#.$]+/g) || [];
+    const types = separator >= 0 ? splitTopLevel(str.slice(separator + 1)) : [];
+    return <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginRight: 8 }}>
+      <span style={{ color: C.dim, fontSize: 10 }}>{label}:</span>
+      {names.map((name, i) => {
+        const operandIndex = node.rawOperands?.indexOf(name);
+        const scopedName = operandIndex >= 0 ? node.operands[operandIndex] : name + scope;
+        return <span key={i} style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 2 }}>
+          <ValTag name={scopedName} displayName={name} active={hiVals.includes(scopedName)} onClick={onValClick} />
+          {types[i] && <TypeBadge type={types[i]} />}
+        </span>;
+      })}
+    </span>;
   }
 
   return (
@@ -181,6 +182,9 @@ export default function OpNode({
           cursor: "pointer",
         }}
       >
+        {depth === 0 && enclosingDispatch && <div style={{ color: '#7dd3fc', fontSize: 9, marginBottom: 5 }}>
+          Inside Dispatch {enclosingDispatch.rawResults?.join(', ')} · line {enclosingDispatch.line}
+        </div>}
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minHeight: 22 }}>
           {/* Collapse toggle */}
           {node.isCollapsible && (
@@ -206,7 +210,7 @@ export default function OpNode({
           {node.results.length > 0 && <span style={{ color: C.dim, fontSize: 11 }}>=</span>}
 
           {/* Op name */}
-          <span style={{ fontSize: 11, fontWeight: 600, fontFamily: M, color }}>{node.opName}</span>
+          <span style={{ fontSize: 11, fontWeight: 600, fontFamily: M, color }}>{node.regionKind === "count" ? "Workgroup count" : node.opName}</span>
 
           {/* Purpose badge (from profile summarize rules) */}
           {summary && (
@@ -273,7 +277,7 @@ export default function OpNode({
           )}
 
           {/* Operands */}
-          {!node.attrs.ins && node.operands.length > 0 && node.operands.length <= 8 && !isFunc && (
+          {!isDispatch(node) && !node.attrs.ins && node.operands.length > 0 && node.operands.length <= 8 && !isFunc && (
             <span style={{ display: "inline-flex", gap: 2, flexWrap: "wrap" }}>
               {node.operands.map((o, i) => (
                 <ValTag key={i} name={o} displayName={node.rawOperands?.[i] || o} active={hiVals.includes(o)} onClick={onValClick} />
@@ -287,8 +291,9 @@ export default function OpNode({
           </span>
         </div>
 
+        {isDispatch(node) && <DispatchDetails node={node} nodes={nodes} hiVals={hiVals} onValClick={onValClick} />}
         {/* Types */}
-        {node.types.length > 0 && node.types.length <= 6 && (
+        {!isDispatch(node) && node.types.length > 0 && node.types.length <= 6 && (
           <div style={{ marginTop: 2, marginLeft: node.isCollapsible ? 22 : 0, display: "flex", gap: 2, flexWrap: "wrap" }}>
             {node.types.map((t, i) => <TypeBadge key={i} type={t} />)}
           </div>

@@ -1,3 +1,4 @@
+import { isDispatch } from "./dispatch.js";
 /**
  * Canvas Renderer
  *
@@ -145,8 +146,9 @@ export function drawEdges(ctx, layout, highlightedValues, primaryNodes, relatedN
     const minLw = isHi ? 1.5 / zoom : isRel ? 1.2 / zoom : 0.5 / zoom;
     const edgeLw = isHi ? 2.5 : isRel ? 2.2 : 1.4;
     ctx.lineWidth = Math.max(edgeLw, minLw);
-    ctx.setLineDash([]);
+    ctx.setLineDash(e.tiedEdge ? [5, 4] : []);
     ctx.stroke();
+    ctx.setLineDash([]);
 
     // Skip arrowheads and labels at minimal LOD
     if (lod === "minimal") continue;
@@ -170,14 +172,14 @@ export function drawEdges(ctx, layout, highlightedValues, primaryNodes, relatedN
       const labelX = pts[0].x * (1 - labelT) + pts[1].x * labelT + 20;
       const labelY = pts[0].y * (1 - labelT) + pts[1].y * labelT;
       // Background pill for readability
-      const tw = ctx.measureText(e.value).width;
+      const tw = ctx.measureText(e.label || e.value).width;
       const px = 4, py = 3;
       ctx.fillStyle = "rgba(10, 15, 25, 0.85)";
       roundRect(ctx, labelX - tw / 2 - px, labelY - 8 - py, tw + px * 2, 10 + py * 2, 3);
       ctx.fill();
       ctx.fillStyle = "#8ec4ff";
       ctx.textAlign = "center";
-      ctx.fillText(e.value, labelX, labelY);
+      ctx.fillText(e.label || e.value, labelX, labelY);
     }
   }
 }
@@ -199,6 +201,25 @@ export function drawNodes(ctx, layout, highlightedValues, primaryNodes, relatedN
     )) continue;
 
     const op = p.node;
+    if (p.expandedDispatch) continue;
+    if (isDispatch(op)) {
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#102b40';
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = primaryNodes.has(op.id) ? 3 : 1.5;
+      roundRect(ctx, p.x, p.y, p.w, p.h, 4);
+      ctx.fill(); ctx.stroke();
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#7dd3fc';
+      ctx.font = `600 11px ${M}`;
+      ctx.fillText(`▣ Dispatch ${(op.rawResults || []).join(', ')}`, p.x + 10, p.y + 16, p.w - 20);
+      ctx.font = `9px ${M}`;
+      ctx.fillStyle = '#9db3cc';
+      ctx.fillText(op.loc || op.opName, p.x + 10, p.y + 30, p.w - 20);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText('＋ Expand inline', p.x + 10, p.y + p.h - 4);
+      continue;
+    }
     const col = getDialectColor(op.dialect);
     const isPrimary = primaryNodes.has(op.id);
     const isRelated = relatedNodes.has(op.id);
@@ -545,4 +566,41 @@ export function drawOverlays(ctx, layout, overlay, viewport, zoom) {
       }
     }
   }
+}
+
+/** Dispatch shells sit behind their child graph; boundary values are ports, not nodes. */
+export function drawDispatchGroups(ctx, groups, primary, viewport) {
+  for (const g of groups || []) {
+    if (viewport && (g.x + g.w < viewport.x1 || g.x > viewport.x2 || g.y + g.h < viewport.y1 || g.y > viewport.y2)) continue;
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#102032';
+    ctx.strokeStyle = primary.has(g.node.id) ? '#bae6fd' : '#38bdf8';
+    ctx.lineWidth = primary.has(g.node.id) ? 3 : 1.5;
+    roundRect(ctx, g.x, g.y, g.w, g.h, 10);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#18344a';
+    ctx.fillRect(g.x + 1, g.y + 16, g.w - 2, 40);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#7dd3fc';
+    ctx.font = `600 12px ${M}`;
+    ctx.fillText(`▾ Dispatch ${(g.node.rawResults || []).join(', ')}  ·  ${g.node.loc || g.node.opName}`, g.x + 12, g.y + 41, g.w - 115);
+    ctx.textAlign = 'right';
+    ctx.fillText('− Collapse', g.x + g.w - 12, g.y + 41);
+    ctx.textAlign = 'left';
+  }
+}
+
+export function drawDispatchPorts(ctx, groups, highlightedValues) {
+  for (const g of groups || []) for (const port of g.ports) {
+    ctx.fillStyle = (highlightedValues.includes(port.outerValue) || highlightedValues.includes(port.value)) ? '#245b80' : '#16394d';
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1;
+    roundRect(ctx, port.x - 68, port.y - 10, 136, 20, 10);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#bae6fd';
+    ctx.font = `9px ${M}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`${port.direction === 'in' ? '↓' : '↑'} ${port.label}`, port.x, port.y + 3, 126);
+  }
+  ctx.textAlign = 'left';
 }

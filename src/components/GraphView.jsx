@@ -12,10 +12,13 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { colors } from "../utils/theme.js";
 import { getHighlightedNodeSets } from "../graph/build-graph.js";
-import { computeLayout } from "../graph/layout.js";
 import { reconcileLayout } from "../graph/reconcile-layout.js";
-import { drawGrid, drawEdges, drawNodes, drawLocGroups, drawGhostNodes, drawOverlays } from "../graph/canvas-renderer.js";
+import { drawGrid, drawEdges, drawNodes, drawLocGroups, drawGhostNodes, drawOverlays, drawDispatchGroups, drawDispatchPorts } from "../graph/canvas-renderer.js";
 import { buildSpatialGrid } from "../graph/spatial-index.js";
+
+import { isDispatch } from "../graph/dispatch.js";
+
+import { computeDispatchLayout, hitTestNodes } from "../graph/dispatch-layout.js";
 
 const C = colors;
 
@@ -28,6 +31,8 @@ const toolbarBtn = {
   fontSize: 10,
   cursor: "pointer",
   lineHeight: "18px",
+  whiteSpace: "nowrap",
+  flexShrink: 0,
 };
 
 export default function GraphView({
@@ -43,6 +48,17 @@ export default function GraphView({
   snapshotIdx,      // index of the rendered snapshot in the series
   onLayoutRendered, // ({idx, posById, layout}) → parent records for the next step
 }) {
+  const [expandAll, setExpandAll] = useState(true);
+  const [dispatchOverrides, setDispatchOverrides] = useState({ ops: null, ids: new Set() });
+  const expandedDispatches = useMemo(() => new Set(ops.filter((op) => isDispatch(op) &&
+    (expandAll !== (dispatchOverrides.ops === ops && dispatchOverrides.ids.has(op.id)))).map((op) => op.id)), [ops, expandAll, dispatchOverrides]);
+  function toggleDispatch(id) {
+    setDispatchOverrides((old) => {
+      const ids = new Set(old.ops === ops ? old.ids : []);
+      if (ids.has(id)) ids.delete(id); else ids.add(id);
+      return { ops, ids };
+    });
+  }
   const canvasRef = useRef(null);
   const viewState = useRef({ px: 40, py: 40, z: 1, drag: false, lx: 0, ly: 0 });
   const rafId = useRef(null);
@@ -62,11 +78,21 @@ export default function GraphView({
   const layoutOps = useMemo(() => {
     if (!subgraphMode || hiVals.length === 0) return ops;
     const { primary, related } = getHighlightedNodeSets(hiVals, graph);
-    return ops.filter((o) => primary.has(o.id) || related.has(o.id));
+    const included = new Set([...primary, ...related]);
+    const byId = new Map(ops.map((op) => [op.id, op]));
+    return ops.filter((op) => {
+      if (included.has(op.id)) return true;
+      let parent = byId.get(op.parentId);
+      while (parent) {
+        if (isDispatch(parent) && included.has(parent.id)) return true;
+        parent = byId.get(parent.parentId);
+      }
+      return false;
+    });
   }, [ops, graph, hiVals, subgraphMode]);
 
   // registry is a dep: profile changes alter op classification (layout) and node colors/labels (draw)
-  const rawLayout = useMemo(() => computeLayout(layoutOps, graph, showAux, locGrouping), [layoutOps, graph, showAux, locGrouping, registry]);
+  const rawLayout = useMemo(() => computeDispatchLayout(layoutOps, graph, showAux, locGrouping, expandedDispatches), [layoutOps, graph, showAux, locGrouping, registry, expandedDispatches]);
 
   // Subgraph stability: reconcile each fresh layout against the previous
   // node positions so growing/shrinking the trace doesn't reshuffle nodes
@@ -80,7 +106,7 @@ export default function GraphView({
   // matched nodes instead (below).
   const prevSubPos = useRef(null);
   const layout = useMemo(() => {
-    if (!subgraphMode) {
+    if (!subgraphMode || rawLayout.dispatchGroups?.length) {
       prevSubPos.current = null;
       return rawLayout;
     }
@@ -375,8 +401,10 @@ export default function GraphView({
     if (!subgraphMode && ghosts.length) {
       drawGhostNodes(ctx, ghosts, viewport, vs.z, hiGhostId);
     }
+    drawDispatchGroups(ctx, layout.dispatchGroups, primary, viewport);
     drawEdges(ctx, layout, hiVals, primary, related, viewport, vs.z);
     drawNodes(ctx, layout, hiVals, primary, related, viewport, vs.z);
+    drawDispatchPorts(ctx, layout.dispatchGroups, hiVals);
     if (!subgraphMode && (stepContext?.diff || probeHalos?.size)) {
       drawOverlays(
         ctx,
@@ -435,10 +463,12 @@ export default function GraphView({
       ? "subgraph"
       : stepContext
         ? `pipeline_${snapshotIdx}_${showAux}_${locGrouping}`
-        : `${layout.nodes.length}_${layout.edges.length}_${showAux}_${locGrouping}`;
+        : `${layout.nodes.length}_${layout.edges.length}_${layout.w}_${layout.h}_${showAux}_${locGrouping}`;
     if (prevLayoutKey.current === key) return;
     prevLayoutKey.current = key;
-    if (!subgraphMode && hiVals.length > 0) {
+    if (layout.dispatchGroups?.length) {
+      fitToView();
+    } else if (!subgraphMode && hiVals.length > 0) {
       focusSelected();
     } else {
       fitToView();
@@ -517,23 +547,12 @@ export default function GraphView({
     const worldX = (pos.x - vs.px) / vs.z;
     const worldY = (pos.y - vs.py) / vs.z;
 
-    // Hit test via spatial index — pick smallest (most specific) node
-    const candidates = spatialGrid.query(worldX, worldY);
-    let best = null;
-    let bestArea = Infinity;
-    for (const node of candidates) {
-      if (
-        worldX >= node.x &&
-        worldX <= node.x + node.w &&
-        worldY >= node.y &&
-        worldY <= node.y + node.h
-      ) {
-        const area = node.w * node.h;
-        if (area < bestArea) {
-          best = node;
-          bestArea = area;
-        }
-      }
+    const best = hitTestNodes(spatialGrid.query(worldX, worldY), worldX, worldY);
+    if (best && isDispatch(best.node) && (best.expandedDispatch
+      ? worldY >= best.y + 16 && worldY <= best.y + 56 && worldX >= best.x + best.w - 110
+      : worldY >= best.y + best.h - 15)) {
+      toggleDispatch(best.node.id);
+      return;
     }
     if (best) {
       if (best.node.results.length > 0) {
@@ -571,6 +590,7 @@ export default function GraphView({
           padding: "6px 10px",
           display: "flex",
           gap: 6,
+          flexWrap: "wrap",
           alignItems: "center",
           borderBottom: `1px solid ${C.border}`,
           background: C.panel,
@@ -580,6 +600,11 @@ export default function GraphView({
         <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: C.dim }}>
           Graph
         </span>
+        {ops.some(isDispatch) && <button style={toolbarBtn}
+          aria-pressed={expandedDispatches.size > 0}
+          onClick={() => { setExpandAll(expandedDispatches.size === 0); setDispatchOverrides({ ops, ids: new Set() }); }}>
+          {expandedDispatches.size > 0 ? 'Collapse all dispatches' : 'Expand all dispatches'}
+        </button>}
         <span style={{ fontSize: 10, color: subgraphMode ? C.accent : C.dim }}>
           {subgraphMode ? "subgraph · " : ""}{layout.nodes.length} nodes · {layout.edges.length} edges
         </span>

@@ -27,6 +27,8 @@
  *                 than one leaf, else null
  */
 
+import { parseDispatchSignature, extractTypes } from "./dispatch-signature.js";
+
 import { getActiveRegistry } from "../extensions/registry.js";
 
 /**
@@ -274,7 +276,12 @@ export function parseMLIR(src) {
   }
 
   for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i];
+    let raw = lines[i];
+    const sourceLine = i + 1;
+    // Dispatch assembly commonly puts its entry signature on the next line.
+    if (/flow\.dispatch\.(workgroups|region)\b/.test(raw) && /=$/.test(raw.trimEnd())) {
+      while (i + 1 < lines.length && !raw.trimEnd().endsWith("{")) raw += " " + lines[++i].trim();
+    }
     const trimmed = raw.trimStart();
     const indent = raw.length - trimmed.length;
 
@@ -297,6 +304,9 @@ export function parseMLIR(src) {
           applyLocLeaves(closedOp, extractLocLeavesFromLine(trimmed, resolveAlias));
         }
       }
+      if (closedId != null && ops[closedId]?.regionOwner != null) {
+        applyLocLeaves(ops[ops[closedId].regionOwner], extractLocLeavesFromLine(trimmed, resolveAlias));
+      }
       // "} count() -> (...) {" opens a new region after closing
       if (trimmed.endsWith("{")) {
         // Create a minimal region node for the new block (e.g. count block)
@@ -308,6 +318,12 @@ export function parseMLIR(src) {
           isRegion: true, isCollapsible: false, genericBody: null, loc: null, locPrefix: null,
           locAll: null, rawOperands: [],
         };
+        if (/^}\s*count\(/.test(trimmed) && closedId != null) {
+          regionNode.regionOwner = closedId;
+          regionNode.parentId = closedId;
+          regionNode.regionKind = "count";
+        }
+        if (regionNode.parentId != null) ops[regionNode.parentId]?.children.push(regionNode.id);
         ops.push(regionNode);
         stack.push(regionNode.id);
       }
@@ -316,7 +332,7 @@ export function parseMLIR(src) {
 
     const node = {
       id: uid++,
-      line: i + 1,
+      line: sourceLine,
       raw,
       trimmed: trimmed.replace(/\{$/, "").trim(),
       indent,
@@ -339,6 +355,10 @@ export function parseMLIR(src) {
 
     const opensRegion = raw.trimEnd().endsWith("{");
     parseOpLine(node, trimmed, resolveAlias);
+
+    if (/^flow\.dispatch\.(workgroups|region)$/.test(node.opName)) {
+      parseDispatchSignature(node, trimmed);
+    }
 
     // Scope SSA values by parent region to avoid cross-region collisions
     node.rawResults = [...node.results];
@@ -380,6 +400,23 @@ export function parseMLIR(src) {
     }
   }
 
+  // Resolve captured values lexically, preserving local argument shadowing.
+  const definitions = new Map();
+  for (const op of ops) {
+    for (let k = 0; k < op.rawResults.length; k++) definitions.set(`${op.parentId}:${op.rawResults[k]}`, op.results[k]);
+    for (const arg of op.blockArguments || []) definitions.set(`${op.id}:${arg}`, `${arg}@${op.id}`);
+  }
+  for (const op of ops) {
+    op.operands = (op.rawOperands || []).map((value, k) => {
+      let scope = op.parentId;
+      while (scope != null) {
+        const found = definitions.get(`${scope}:${value}`);
+        if (found) return found;
+        scope = ops[scope]?.parentId;
+      }
+      return definitions.get(`null:${value}`) || op.operands[k];
+    });
+  }
   ops.locAliases = locAliases;
   return ops;
 }
@@ -439,13 +476,7 @@ function parseOpLine(node, t, resolveAlias) {
   );
 
   // Types
-  node.types = [
-    ...new Set(
-      t.match(
-        /(?:tensor<[^>]+>|memref<[^>]+>|vector<[^>]+>|f16|f32|f64|bf16|i1|i8|i16|i32|i64|index|![\w.]+(?:<[^>]*>)?)/g
-      ) || []
-    ),
-  ];
+  node.types = extractTypes(t);
 
   // ins/outs attributes (linalg style)
   const insMatch = t.match(/\bins\(([^)]*)\)/);

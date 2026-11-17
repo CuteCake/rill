@@ -1,7 +1,7 @@
 {
   "name": "iree-flow-yolo",
   "version": 1,
-  "description": "Profile for IREE dispatch-creation stage IR (flow / iree_tensor_ext / linalg / tensor / arith / util / hal), tuned on a YOLO-style module. Host plumbing (module, util.*, hal.*, flow.return, dispatch.tensor.store, workgroup_count_from_slice) is hidden; buffer bookkeeping (arith.constant, tensor.empty, linalg.fill, dispatch.tensor.load, flow.tensor.reshape/splat/slice/update) becomes mini aux nodes; each flow.dispatch.workgroups collapses to ONE node whose captured body is pattern-matched into conv/matmul, SiLU, sigmoid, max-pool, and elementwise labels, so the top-level graph is the 100-dispatch dataflow. If you would rather see the linalg.generic ops inside each dispatch as separate nodes, delete the regions[] entry for flow.dispatch.workgroups (or change its policy to \"descend\") and change its classify entry to \"container\" — the identical summarize rules already cover linalg.generic.",
+  "description": "IREE dispatch-creation profile. Dispatch regions remain parsed for graph navigation; open a dispatch box to inspect its body and workgroup count. Inner linalg.generic bodies retain purpose summaries.",
   "dialects": {
     "flow": "#38bdf8",
     "iree_tensor_ext": "#22d3ee",
@@ -26,7 +26,7 @@
     { "match": { "opName": "linalg.generic" }, "as": "compute" }
   ],
   "regions": [
-    { "match": { "opName": "flow.dispatch.workgroups" }, "policy": "opaque", "captureBody": true },
+    { "match": { "opName": "flow.dispatch.workgroups" }, "policy": "descend" },
     { "match": { "opName": "linalg.generic" }, "policy": "opaque", "captureBody": true }
   ],
   "summarize": [

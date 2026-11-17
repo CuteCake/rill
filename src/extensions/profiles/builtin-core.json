@@ -80,6 +80,11 @@
     },
     {
       "match": { "opName": "linalg.generic" },
+      "when": { "bodyContainsAll": ["addf", "subf"], "bodyLacksAll": ["mulf", "divf"] },
+      "label": "add / subtract", "icon": "±", "color": "#0fb8a6"
+    },
+    {
+      "match": { "opName": "linalg.generic" },
       "when": { "bodyContainsAll": ["addf"], "bodyLacksAll": ["mulf"] },
       "label": "bias add", "icon": "+", "color": "#0fb8a6"
     },
