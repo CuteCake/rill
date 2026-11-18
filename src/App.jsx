@@ -49,7 +49,7 @@ const VIA_HINT = {
   manual: "Matching method: manually linked by you (saved in the session)",
 };
 
-export default function App() {
+export default function App({ initialFiles, saveJSON = downloadJSON }) {
   const [view, setView] = useState("graph");
   const [selId, setSelId] = useState(null);
   const [hiVals, setHiVals] = useState([]);
@@ -95,7 +95,9 @@ export default function App() {
         matchSnapshots(a.ops, a.graph, b.ops, b.graph, overrides),
       hash: contentHash,
     });
-    storeRef.current.load([{ name: "demo.mlir", text: SAMPLE_MLIR }]);
+    storeRef.current.load(initialFiles?.length
+      ? [...initialFiles].sort((a, b) => naturalCompare(a.name, b.name))
+      : [{ name: "demo.mlir", text: SAMPLE_MLIR }]);
   }
   const store = storeRef.current;
   const [seriesRev, setSeriesRev] = useState(0);
@@ -281,7 +283,7 @@ export default function App() {
       views: sessionMeta?.views || [],
     });
     const base = (session.name || "rill-session").replace(/[^\w.-]+/g, "-");
-    downloadJSON(session, `${base}.rill-session.json`);
+    saveJSON(session, `${base}.rill-session.json`);
   }
 
   // ── Probes (track) and manual link overrides ──

@@ -7,3 +7,8 @@ dist/
 # Large local-only MLIR dumps (kept for local testing, not distributed)
 yolov8n_readable/
 test/fixtures/flat-traced.mlir
+
+# VS Code build outputs
+/vscode/media/
+/vscode/LICENSE
+/releases/

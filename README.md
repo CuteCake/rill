@@ -27,6 +27,23 @@ Compiler IR dumps are thousands of lines of text. Answering simple questions —
 
 Everything runs client-side: [open Rill](https://rill.fluidmoment.ai/), drop in a `.mlir` file, explore. `npm run build` even produces a **single self-contained HTML file** you can share or keep next to your IR dumps.
 
+## VS Code extension
+
+Download the VSIX from the [GitHub Releases page](https://github.com/CuteCake/rill/releases), or build it locally. With Node.js 22.12+ or 24 LTS, run `npm ci` and `npm run build:vscode` from the repository root. In VS Code, run **Extensions: Install from VSIX...** and select `releases/rill-<version>.vsix`.
+
+Right-click an IR file in Explorer and choose **Open in Rill**. Select several pass dumps together to compare them on the timeline. From the Command Palette, **Rill: Open in Rill** uses the current IR buffer, including unsaved edits, or opens a file picker. Each viewer captures the files at the time you open it.
+
+### Publishing a GitHub release
+
+Commit the release changes, including the version in `vscode/package.json`. Push a tag named `v<extension-version>` on that commit. For example, for extension version 0.1.0:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+GitHub Actions builds both targets from the tagged commit and creates a draft release with `index.html` and `rill-<version>.vsix` attached. Review the notes and assets under **Releases**, then click **Publish release**.
+
 ## Features
 
 ### 📊 Readable graphs at model scale

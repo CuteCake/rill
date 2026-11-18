@@ -1,0 +1,45 @@
+name: Prepare GitHub release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Check release version
+        run: |
+          version=$(node -p "require('./vscode/package.json').version")
+          if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME must match the extension version v$version"
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm run build
+      - run: npm run build:vscode
+      - name: Prepare draft with both downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          assets=(dist/index.html "releases/rill-${tag#v}.vsix")
+          if draft=$(gh release view "$tag" --json isDraft --jq .isDraft); then
+            if [[ "$draft" != true ]]; then
+              echo "::error::Release $tag has already been published"
+              exit 1
+            fi
+            gh release upload "$tag" "${assets[@]}" --clobber
+          else
+            gh release create "$tag" "${assets[@]}" --verify-tag --draft --generate-notes
+          fi

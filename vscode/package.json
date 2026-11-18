@@ -1,0 +1,18 @@
+{
+  "name": "rill",
+  "displayName": "Rill — MLIR Dataflow Viewer",
+  "description": "Explore compiler IR as a graph and compare pass snapshots.",
+  "publisher": "CuteCake",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": "https://github.com/CuteCake/rill.git",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Visualization"],
+  "main": "./extension.cjs",
+  "contributes": {
+    "commands": [{ "command": "rill.open", "title": "Open in Rill", "category": "Rill" }],
+    "menus": {
+      "explorer/context": [{ "command": "rill.open", "when": "!explorerResourceIsFolder && resourceExtname =~ /^(\\.mlir|\\.ir|\\.ll|\\.txt|\\.prototxt|\\.pbtxt)$/i", "group": "navigation" }]
+    }
+  }
+}
