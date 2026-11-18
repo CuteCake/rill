@@ -3,6 +3,18 @@ name: Prepare GitHub release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to package
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
 
 permissions:
   contents: write
@@ -13,6 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
           persist-credentials: false
       - uses: actions/setup-node@v6
         with:
@@ -21,8 +34,8 @@ jobs:
       - name: Check release version
         run: |
           version=$(node -p "require('./vscode/package.json').version")
-          if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
-            echo "::error::Tag $GITHUB_REF_NAME must match the extension version v$version"
+          if [[ "$RELEASE_TAG" != "v$version" ]]; then
+            echo "::error::Tag $RELEASE_TAG must match the extension version v$version"
             exit 1
           fi
       - run: npm ci
@@ -32,7 +45,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="$GITHUB_REF_NAME"
+          tag="$RELEASE_TAG"
           assets=(dist/index.html "releases/rill-${tag#v}.vsix")
           if draft=$(gh release view "$tag" --json isDraft --jq .isDraft); then
             if [[ "$draft" != true ]]; then
